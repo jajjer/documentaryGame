@@ -2,6 +2,8 @@
 
 DocuFrame is a simple Wordle-style web game for documentaries. Each week there is one documentary and up to five image frames as hints. Players get at most five guesses; each wrong guess reveals another frame, and at the end they can copy a shareable text result.
 
+**[Play the live game →](https://jajjer.github.io/documentaryGame/)**
+
 This project is a Vite + React + TypeScript single-page app wired to use Firebase Firestore for storing weekly puzzles.
 
 ## Tech stack
