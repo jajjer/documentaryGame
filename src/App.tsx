@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import { DOCUMENTARY_TITLES } from './documentaryTitles';
 import { getCurrentWeekId, normalizeTitle } from './utils';
 
 type Puzzle = {
@@ -67,7 +68,7 @@ function buildShareText(
   const rows = attempts
     .slice(0, MAX_ATTEMPTS)
     .map((a, index) => {
-      const marker = a.correct ? 'O' : 'X';
+      const marker = a.correct ? '🎯' : a.guess === '—' ? '⏭️' : '❌';
       return `${index + 1}: ${marker}`;
     })
     .join('\n');
@@ -76,11 +77,11 @@ function buildShareText(
     attempts.length < MAX_ATTEMPTS
       ? `${rows}${rows ? '\n' : ''}${Array.from(
           { length: MAX_ATTEMPTS - attempts.length },
-          (_, i) => `${attempts.length + i + 1}: -`,
+          (_, i) => `${attempts.length + i + 1}: ⬜`,
         ).join('\n')}`
       : rows;
 
-  return `DocuFrame — ${weekLabel}\nScore: ${score}\n\n${paddedRows}\n\nhttps://your-domain.com`;
+  return `DocuFrame — ${weekLabel}\nScore: ${score}\n\n${paddedRows}\n\nhttps://jajjer.github.io/documentaryGame/`;
 }
 
 function useWeeklyPuzzle() {
@@ -177,6 +178,7 @@ function useWeeklyPuzzle() {
 
 function App() {
   const {
+    weekId,
     weekLabel,
     puzzle,
     status,
@@ -188,8 +190,41 @@ function App() {
   } = useWeeklyPuzzle();
   const [guess, setGuess] = useState('');
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const isComplete = status === 'won' || status === 'lost';
+
+  const suggestionSource = useMemo(() => {
+    const fromPuzzle = puzzle
+      ? [puzzle.title, ...(puzzle.altTitles ?? [])].filter(Boolean)
+      : [];
+    const combined = [...fromPuzzle, ...DOCUMENTARY_TITLES];
+    const seen = new Set<string>();
+    return combined.filter((t) => {
+      const n = normalizeTitle(t);
+      if (seen.has(n)) return false;
+      seen.add(n);
+      return true;
+    });
+  }, [puzzle]);
+
+  const suggestions = useMemo(() => {
+    if (!guess.trim()) return [];
+    const norm = normalizeTitle(guess);
+    const used = new Set(attempts.map((a) => normalizeTitle(a.guess)));
+    return suggestionSource
+      .filter(
+        (t) =>
+          normalizeTitle(t).includes(norm) && !used.has(normalizeTitle(t)),
+      )
+      .slice(0, 8);
+  }, [guess, suggestionSource, attempts]);
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [suggestions]);
 
   const visibleFrames = useMemo(() => {
     if (!puzzle) return [];
@@ -215,20 +250,20 @@ function App() {
     prevVisibleCountRef.current = n;
   }, [visibleFrames.length]);
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!puzzle || !guess.trim() || status !== 'playing') return;
+  const submitGuess = (guessText: string) => {
+    if (!puzzle || !guessText.trim() || status !== 'playing') return;
 
-    const normalizedGuess = normalizeTitle(guess);
+    const normalizedGuess = normalizeTitle(guessText);
     const candidates = [puzzle.title, ...(puzzle.altTitles ?? [])].map(
       (t) => normalizeTitle(t),
     );
 
     const correct = candidates.includes(normalizedGuess);
-    const nextAttempts = [...attempts, { guess: guess.trim(), correct }];
+    const nextAttempts = [...attempts, { guess: guessText.trim(), correct }];
 
     setAttempts(nextAttempts);
     setGuess('');
+    setShowSuggestions(false);
 
     if (correct) {
       setStatus('won');
@@ -238,6 +273,30 @@ function App() {
     if (nextAttempts.length >= MAX_ATTEMPTS) {
       setStatus('lost');
     }
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    submitGuess(guess);
+  };
+
+  const handleSkip = () => {
+    if (!puzzle || status !== 'playing' || attempts.length >= MAX_ATTEMPTS) return;
+    const nextAttempts = [...attempts, { guess: '—', correct: false }];
+    setAttempts(nextAttempts);
+    if (nextAttempts.length >= MAX_ATTEMPTS) {
+      setStatus('lost');
+    }
+  };
+
+  const handleReset = () => {
+    try {
+      window.localStorage.removeItem(`docuframe:${weekId}`);
+    } catch {
+      // ignore
+    }
+    setAttempts([]);
+    setStatus('playing');
   };
 
   const handleShare = async () => {
@@ -370,23 +429,85 @@ function App() {
 
             {!isComplete && (
               <>
-                <form className="input-row" onSubmit={handleSubmit}>
-                  <input
-                    className="guess-input"
-                    type="text"
-                    autoComplete="off"
-                    placeholder="Type the documentary title…"
-                    value={guess}
-                    onChange={(e) => setGuess(e.target.value)}
-                    disabled={status !== 'playing'}
-                  />
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={status !== 'playing' || !guess.trim()}
-                  >
-                    Guess
-                  </button>
+                <form
+                  className="input-row"
+                  onSubmit={handleSubmit}
+                  onKeyDown={(e) => {
+                    if (!showSuggestions || suggestions.length === 0) return;
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setHighlightedIndex((i) =>
+                        i < suggestions.length - 1 ? i + 1 : 0,
+                      );
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setHighlightedIndex((i) =>
+                        i > 0 ? i - 1 : suggestions.length - 1,
+                      );
+                    } else if (e.key === 'Enter' && suggestions[highlightedIndex]) {
+                      e.preventDefault();
+                      submitGuess(suggestions[highlightedIndex]);
+                    } else if (e.key === 'Escape') {
+                      setShowSuggestions(false);
+                    }
+                  }}
+                >
+                  <div className="guess-input-wrap">
+                    <input
+                      className="guess-input"
+                      type="text"
+                      autoComplete="off"
+                      placeholder="Type or pick a documentary…"
+                      value={guess}
+                      onChange={(e) => setGuess(e.target.value)}
+                      onFocus={() => setShowSuggestions(true)}
+                      onBlur={() =>
+                        setTimeout(() => setShowSuggestions(false), 150)
+                      }
+                      disabled={status !== 'playing'}
+                    />
+                    {showSuggestions && suggestions.length > 0 && (
+                      <div
+                        ref={suggestionsRef}
+                        className="suggestions-dropdown"
+                        role="listbox"
+                      >
+                        {suggestions.map((title, i) => (
+                          <button
+                            key={title}
+                            type="button"
+                            role="option"
+                            aria-selected={i === highlightedIndex}
+                            className={`suggestion-item ${i === highlightedIndex ? 'suggestion-item-active' : ''}`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              submitGuess(title);
+                            }}
+                            onMouseEnter={() => setHighlightedIndex(i)}
+                          >
+                            {title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="input-actions">
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={status !== 'playing' || !guess.trim()}
+                    >
+                      Guess
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-skip"
+                      onClick={handleSkip}
+                      disabled={status !== 'playing' || attempts.length >= MAX_ATTEMPTS}
+                    >
+                      Skip
+                    </button>
+                  </div>
                 </form>
                 <p className="hint-text">
                   Title matching ignores case, punctuation, and leading “The/A/An”.
@@ -399,7 +520,7 @@ function App() {
                 {attempts.map((a, index) => (
                   <div key={index} className="attempt-row">
                     <div className="attempt-guess">
-                      {index + 1}. {a.guess}
+                      {index + 1}. {a.guess === '—' ? 'Skipped' : a.guess}
                     </div>
                     <div
                       className={`attempt-result ${
@@ -408,7 +529,7 @@ function App() {
                           : 'attempt-result-wrong'
                       }`}
                     >
-                      {a.correct ? 'Correct' : 'Wrong'}
+                      {a.correct ? 'Correct' : a.guess === '—' ? 'Skipped' : 'Wrong'}
                     </div>
                   </div>
                 ))}
@@ -420,7 +541,7 @@ function App() {
             <div>
               <span className="muted">Built for documentary lovers.</span>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -428,6 +549,13 @@ function App() {
                 disabled={!isComplete}
               >
                 Share result
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleReset}
+              >
+                Reset this week
               </button>
               {shareStatus && <span className="share-status">{shareStatus}</span>}
             </div>

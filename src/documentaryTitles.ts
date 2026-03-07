@@ -1,0 +1,38 @@
+/**
+ * Curated list of well-known documentary titles for autocomplete.
+ * The current week's puzzle title is always merged in at runtime so the answer is suggestable.
+ */
+export const DOCUMENTARY_TITLES: string[] = [
+  '13th',
+  'American Factory',
+  'Amy',
+  'An Inconvenient Truth',
+  'Blackfish',
+  'Bowling for Columbine',
+  'Citizenfour',
+  'Crip Camp',
+  'Free Solo',
+  'Fahrenheit 9/11',
+  'Finding Vivian Maier',
+  'Food, Inc.',
+  'Grizzly Man',
+  'Hoops Dreams',
+  'Icarus',
+  'Jiro Dreams of Sushi',
+  'Man on Wire',
+  'March of the Penguins',
+  'My Octopus Teacher',
+  'OJ: Made in America',
+  'Searching for Sugar Man',
+  'Super Size Me',
+  'The Act of Killing',
+  'The Cove',
+  'The Last Dance',
+  'The King of Kong',
+  'The Thin Blue Line',
+  'The Vietnam War',
+  'They Shall Not Grow Old',
+  'Touching the Void',
+  'Won\'t You Be My Neighbor?',
+  'Woodstock',
+];
