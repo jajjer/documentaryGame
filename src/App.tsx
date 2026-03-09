@@ -266,19 +266,23 @@ function App() {
     // If nothing typed yet, show unused titles but EXCLUDE the current puzzle's answer (no spoilers)
     if (!guess.trim()) {
       return suggestionSource
-        .filter(
-          (t) =>
-            !used.has(normalizeTitle(t)) && !answerTitles.has(normalizeTitle(t)),
-        )
+        .filter((t) => {
+          const titleNorm = normalizeTitle(t);
+          return !used.has(titleNorm) && !answerTitles.has(titleNorm);
+        })
         .slice(0, 8);
     }
 
     const norm = normalizeTitle(guess);
     return suggestionSource
-      .filter(
-        (t) =>
-          normalizeTitle(t).includes(norm) && !used.has(normalizeTitle(t)),
-      )
+      .filter((t) => {
+        const titleNorm = normalizeTitle(t);
+        if (!titleNorm.includes(norm)) return false;
+        if (used.has(titleNorm)) return false;
+        // Don't surface the correct answer until the user has typed at least 3 characters
+        if (answerTitles.has(titleNorm) && norm.length < 3) return false;
+        return true;
+      })
       .slice(0, 8);
   }, [guess, suggestionSource, attempts, answerTitles]);
 
@@ -328,18 +332,16 @@ function App() {
 
     setAttempts(nextAttempts);
     setGuess('');
+    setShowSuggestions(false);
 
     if (correct) {
-      setShowSuggestions(false);
       setStatus('won');
       return;
     }
 
     if (nextAttempts.length >= MAX_ATTEMPTS) {
-      setShowSuggestions(false);
       setStatus('lost');
     }
-    // On wrong guess with more attempts left: keep dropdown open so they can pick again
   };
 
   const handleSubmit = (event: React.FormEvent) => {
