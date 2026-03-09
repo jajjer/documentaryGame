@@ -16,6 +16,29 @@ export function getCurrentWeekId(): { id: string; label: string } {
   return { id, label };
 }
 
+export function getWeekLabel(weekId: string): string {
+  const [year, month, date] = weekId.split('-');
+  return `Week of ${month}/${date}/${year}`;
+}
+
+export function getAvailableWeeks(count = 16): { id: string; label: string }[] {
+  const { id: currentId, label: currentLabel } = getCurrentWeekId();
+  const weeks: { id: string; label: string }[] = [];
+  const [y, m, d] = currentId.split('-').map(Number);
+  const baseMonday = new Date(y, m - 1, d);
+
+  for (let i = 0; i < count; i++) {
+    const monday = new Date(baseMonday);
+    monday.setDate(baseMonday.getDate() - 7 * i);
+    const year = monday.getFullYear();
+    const month = String(monday.getMonth() + 1).padStart(2, '0');
+    const date = String(monday.getDate()).padStart(2, '0');
+    const id = `${year}-${month}-${date}`;
+    weeks.push({ id, label: getWeekLabel(id) });
+  }
+  return weeks;
+}
+
 export function normalizeTitle(input: string): string {
   return input
     .toLowerCase()

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { DOCUMENTARY_TITLES } from './documentaryTitles';
-import { getCurrentWeekId, normalizeTitle } from './utils';
+import { getCurrentWeekId, getWeekLabel, normalizeTitle } from './utils';
 
 type Puzzle = {
   id: string;
@@ -84,8 +84,8 @@ function buildShareText(
   return `DocuFrame — ${weekLabel}\nScore: ${score}\n\n${paddedRows}\n\nhttps://jajjer.github.io/documentaryGame/`;
 }
 
-function useWeeklyPuzzle() {
-  const [{ id: weekId, label: weekLabel }] = useState(getCurrentWeekId);
+function useWeeklyPuzzle(weekId: string) {
+  const weekLabel = getWeekLabel(weekId);
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [status, setStatus] = useState<GameStatus>('loading');
   const [attempts, setAttempts] = useState<Attempt[]>([]);
@@ -176,7 +176,45 @@ function useWeeklyPuzzle() {
   };
 }
 
+function useAvailableWeeks() {
+  const { id: currentWeekId, label: currentLabel } = getCurrentWeekId();
+  const [weeks, setWeeks] = useState<{ id: string; label: string }[]>(() => [
+    { id: currentWeekId, label: currentLabel },
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchWeeks() {
+      try {
+        const snap = await getDocs(collection(db, 'weeklyPuzzles'));
+        if (cancelled) return;
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const ids = snap.docs
+          .map((d) => d.id)
+          .filter((id) => /^\d{4}-\d{2}-\d{2}$/.test(id) && id <= todayStr);
+        ids.sort((a, b) => b.localeCompare(a));
+        const list = ids.map((id) => ({ id, label: getWeekLabel(id) }));
+        const hasCurrent = list.some((w) => w.id === currentWeekId);
+        setWeeks(hasCurrent ? list : [{ id: currentWeekId, label: currentLabel }, ...list]);
+      } catch {
+        if (cancelled) return;
+        setWeeks([{ id: currentWeekId, label: currentLabel }]);
+      }
+    }
+    void fetchWeeks();
+    return () => { cancelled = true; };
+  }, [currentWeekId, currentLabel]);
+
+  return weeks;
+}
+
 function App() {
+  const { id: currentWeekId } = getCurrentWeekId();
+  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
+  const effectiveWeekId = selectedWeekId ?? currentWeekId;
+  const availableWeeks = useAvailableWeeks();
+
   const {
     weekId,
     weekLabel,
@@ -187,12 +225,13 @@ function App() {
     error,
     setStatus,
     setAttempts,
-  } = useWeeklyPuzzle();
+  } = useWeeklyPuzzle(effectiveWeekId);
   const [guess, setGuess] = useState('');
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isComplete = status === 'won' || status === 'lost';
 
@@ -210,13 +249,27 @@ function App() {
     });
   }, [puzzle]);
 
+  const answerTitles = useMemo(
+    () =>
+      puzzle
+        ? new Set([
+            normalizeTitle(puzzle.title),
+            ...(puzzle.altTitles ?? []).map(normalizeTitle),
+          ])
+        : new Set<string>(),
+    [puzzle],
+  );
+
   const suggestions = useMemo(() => {
     const used = new Set(attempts.map((a) => normalizeTitle(a.guess)));
 
-    // If nothing typed yet, show a default list of unused titles
+    // If nothing typed yet, show unused titles but EXCLUDE the current puzzle's answer (no spoilers)
     if (!guess.trim()) {
       return suggestionSource
-        .filter((t) => !used.has(normalizeTitle(t)))
+        .filter(
+          (t) =>
+            !used.has(normalizeTitle(t)) && !answerTitles.has(normalizeTitle(t)),
+        )
         .slice(0, 8);
     }
 
@@ -227,7 +280,7 @@ function App() {
           normalizeTitle(t).includes(norm) && !used.has(normalizeTitle(t)),
       )
       .slice(0, 8);
-  }, [guess, suggestionSource, attempts]);
+  }, [guess, suggestionSource, attempts, answerTitles]);
 
   useEffect(() => {
     setHighlightedIndex(0);
@@ -257,6 +310,11 @@ function App() {
     prevVisibleCountRef.current = n;
   }, [visibleFrames.length]);
 
+  useEffect(() => {
+    setGuess('');
+    setShowSuggestions(false);
+  }, [effectiveWeekId]);
+
   const submitGuess = (guessText: string) => {
     if (!puzzle || !guessText.trim() || status !== 'playing') return;
 
@@ -270,16 +328,18 @@ function App() {
 
     setAttempts(nextAttempts);
     setGuess('');
-    setShowSuggestions(false);
 
     if (correct) {
+      setShowSuggestions(false);
       setStatus('won');
       return;
     }
 
     if (nextAttempts.length >= MAX_ATTEMPTS) {
+      setShowSuggestions(false);
       setStatus('lost');
     }
+    // On wrong guess with more attempts left: keep dropdown open so they can pick again
   };
 
   const handleSubmit = (event: React.FormEvent) => {
@@ -357,7 +417,18 @@ function App() {
             </div>
           </div>
         </div>
-        <div className="badge-week">{weekLabel}</div>
+        <select
+          className="week-select"
+          value={effectiveWeekId}
+          onChange={(e) => setSelectedWeekId(e.target.value === currentWeekId ? null : e.target.value)}
+        >
+          {availableWeeks.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.label}
+              {w.id === currentWeekId ? ' (this week)' : ''}
+            </option>
+          ))}
+        </select>
       </header>
 
       {!puzzle && (
@@ -467,10 +538,19 @@ function App() {
                       placeholder="Type or pick a documentary…"
                       value={guess}
                       onChange={(e) => setGuess(e.target.value)}
-                      onFocus={() => setShowSuggestions(true)}
-                      onBlur={() =>
-                        setTimeout(() => setShowSuggestions(false), 150)
-                      }
+                      onFocus={() => {
+                        if (blurTimeoutRef.current) {
+                          clearTimeout(blurTimeoutRef.current);
+                          blurTimeoutRef.current = null;
+                        }
+                        setShowSuggestions(true);
+                      }}
+                      onBlur={() => {
+                        blurTimeoutRef.current = setTimeout(() => {
+                          setShowSuggestions(false);
+                          blurTimeoutRef.current = null;
+                        }, 150);
+                      }}
                       disabled={status !== 'playing'}
                     />
                     {showSuggestions && suggestions.length > 0 && (

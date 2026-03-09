@@ -11,6 +11,18 @@ This project is a Vite + React + TypeScript single-page app wired to use Firebas
 - React 19 + TypeScript
 - Vite 7
 - Firebase Web SDK 12 (Firestore)
+- Vitest + React Testing Library (tests)
+
+---
+
+## Testing
+
+```bash
+npm run test        # Run tests once
+npm run test:watch  # Run tests in watch mode
+```
+
+Tests run automatically in CI before each deploy. Unit tests cover `utils` (normalizeTitle, week helpers); component tests cover the App shell, loading state, and puzzle UI with mocked Firebase.
 
 ---
 
