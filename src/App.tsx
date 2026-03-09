@@ -211,9 +211,16 @@ function App() {
   }, [puzzle]);
 
   const suggestions = useMemo(() => {
-    if (!guess.trim()) return [];
-    const norm = normalizeTitle(guess);
     const used = new Set(attempts.map((a) => normalizeTitle(a.guess)));
+
+    // If nothing typed yet, show a default list of unused titles
+    if (!guess.trim()) {
+      return suggestionSource
+        .filter((t) => !used.has(normalizeTitle(t)))
+        .slice(0, 8);
+    }
+
+    const norm = normalizeTitle(guess);
     return suggestionSource
       .filter(
         (t) =>
