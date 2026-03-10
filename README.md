@@ -53,9 +53,12 @@ Tests run automatically in CI before each deploy. Unit tests cover `utils` (norm
    VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
    VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
    VITE_FIREBASE_APP_ID=your_app_id
+   VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id   # optional, for Analytics
    ```
 
    These are read in `src/firebase.ts` via `import.meta.env`.
+
+   **Analytics (optional):** To see usage (sessions, active users, custom events), enable **Google Analytics** in the Firebase Console (Project settings → General → Your apps → choose the web app → ensure "Enable Google Analytics" is on). Copy the `measurementId` (e.g. `G-XXXXXXXXXX`) into `.env.local` as `VITE_FIREBASE_MEASUREMENT_ID`. The app logs `game_started` (when someone starts a week’s puzzle) and `game_completed` (outcome and attempt count). View reports under **Analytics** in the Firebase Console.
 
 4. **Create the Firestore collection**
 
@@ -157,6 +160,7 @@ Tests run automatically in CI before each deploy. Unit tests cover `utils` (norm
    - `VITE_FIREBASE_STORAGE_BUCKET`
    - `VITE_FIREBASE_MESSAGING_SENDER_ID`
    - `VITE_FIREBASE_APP_ID`
+   - `VITE_FIREBASE_MEASUREMENT_ID` (optional; for Analytics on the deployed site)
 
 5. **Turn on GitHub Pages**  
    In the repo: **Settings → Pages → Build and deployment → Source**: choose **GitHub Actions**.  

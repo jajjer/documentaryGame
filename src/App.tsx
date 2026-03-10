@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { db } from './firebase';
 import { DOCUMENTARY_TITLES } from './documentaryTitles';
+import { logEvent } from './analytics';
 import { getCurrentWeekId, getWeekLabel, normalizeTitle } from './utils';
 
 type Puzzle = {
@@ -318,6 +319,29 @@ function App() {
     setGuess('');
     setShowSuggestions(false);
   }, [effectiveWeekId]);
+
+  const gameStartedLoggedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (puzzle && status === 'playing' && gameStartedLoggedRef.current !== weekId) {
+      gameStartedLoggedRef.current = weekId;
+      logEvent('game_started', { week_id: weekId });
+    }
+  }, [puzzle, status, weekId]);
+
+  const gameCompletedLoggedRef = useRef(false);
+  useEffect(() => {
+    if ((status === 'won' || status === 'lost') && !gameCompletedLoggedRef.current) {
+      gameCompletedLoggedRef.current = true;
+      logEvent('game_completed', {
+        outcome: status,
+        attempts: attempts.length,
+        week_id: weekId,
+      });
+    }
+    if (status === 'playing') {
+      gameCompletedLoggedRef.current = false;
+    }
+  }, [status, attempts.length, weekId]);
 
   const submitGuess = (guessText: string) => {
     if (!puzzle || !guessText.trim() || status !== 'playing') return;

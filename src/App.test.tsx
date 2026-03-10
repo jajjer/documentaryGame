@@ -27,6 +27,7 @@ vi.mock('firebase/firestore', () => ({
 
 vi.mock('./firebase', () => ({
   db: {},
+  analytics: null,
 }));
 
 describe('App', () => {
